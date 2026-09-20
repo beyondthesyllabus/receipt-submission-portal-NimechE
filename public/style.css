@@ -63,7 +63,7 @@ body::before {
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  background: url("/images/mec.png") center center / min(75vw, 560px) auto no-repeat;
+  background: url("/images/mech.png") center center / min(75vw, 560px) auto no-repeat;
   opacity: 0.08;
 }
 
