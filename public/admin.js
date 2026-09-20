@@ -50,10 +50,9 @@
   function fmtDate(iso) {
     return new Date(iso).toLocaleString("en-GB", {
       timeZone: "Africa/Lagos", day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit"
+      hour: "numeric", minute: "2-digit", hour12: true
     });
   }
-
   // ---- Auth ---------------------------------------------------------------
   function showLogin() {
     dashView.hidden = true;
@@ -99,7 +98,7 @@
       var ids = new Set(students.map(function (s) { return s.id; }));
       selected.forEach(function (id) { if (!ids.has(id)) selected.delete(id); });
       render();
-    }).catch(function () {});
+    }).catch(function () { });
   }
 
   function visible() {
@@ -135,7 +134,7 @@
         h("td", { class: "sn", text: String(sn) }),
         h("td", { class: "name", text: s.name }),
         h("td", { class: "reg", text: s.reg_number }),
-        h("td", { class: "num", text: String(s.receipt_count) }),
+
         h("td", { class: "date", text: fmtDate(s.created_at) }),
         h("td", { class: "rowactions" },
           h("button", {

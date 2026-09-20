@@ -203,8 +203,9 @@ function fmtDateTime(iso) {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -308,7 +309,10 @@ app.post(
       }
 
       if (!req.files || req.files.length === 0)
-        return res.status(400).json({ error: "Attach at least one receipt." });
+        return res.status(400).json({ error: "Attach your receipt." });
+
+      if (q.studentByReg.get(reg))
+        return res.status(409).json({ error: ALREADY_SUBMITTED });
 
       // Convert/validate every file first so a bad file rejects the whole submission.
       const processed = [];
@@ -716,7 +720,7 @@ function sendPdf(req, res, buffer, filename) {
   res.end(buffer);
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
 
 // Full document: register table followed by every receipt (optionally only chosen students)
 app.get("/api/admin/export.pdf", requireAdmin, async (req, res) => {
