@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin: payment receipts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="admin">
+  <section class="login" id="loginView" hidden>
+    <form id="loginForm" class="slip">
+      <h1>Admin sign in</h1>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="error" id="loginError" role="alert" hidden></p>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <main class="dash" id="dashView" hidden>
+    <header class="dash-head">
+      <div>
+        <h1>Payment receipts</h1>
+        <p class="sub" id="summary">Loading&hellip;</p>
+      </div>
+      <button class="secondary small" id="logout" type="button">Sign out</button>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search name or reg. number" aria-label="Search">
+      <div class="actions">
+        <button class="primary small" id="btnFull" type="button">Download PDF</button>
+        <button class="secondary small" id="btnPrint" type="button">Print</button>
+        <button class="secondary small" id="btnTable" type="button">Register only</button>
+        <button class="secondary small" id="btnCsv" type="button">CSV</button>
+        <button class="danger small" id="btnDeleteSelected" type="button" hidden>Delete selected</button>
+      </div>
+    </div>
+    <p class="hint" id="hint">Download PDF and Print include the register table followed by every receipt. They use all students unless you tick rows.</p>
+
+    <div class="tablewrap">
+      <table id="table">
+        <thead>
+          <tr>
+            <th class="chk"><input type="checkbox" id="selectAll" aria-label="Select all"></th>
+            <th class="sn">S/N</th>
+            <th>Full name</th>
+            <th>Reg. number</th>
+            <th class="num">Receipts</th>
+            <th>Submitted</th>
+            <th class="rowactions"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="empty" id="empty" hidden>No submissions yet.</p>
+    </div>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

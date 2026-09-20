@@ -1,0 +1,169 @@
+(function () {
+  "use strict";
+
+  var MAX_FILES = 5;
+  var MAX_BYTES = 10 * 1024 * 1024;
+
+  var form = document.getElementById("form");
+  var nameEl = document.getElementById("name");
+  var regEl = document.getElementById("reg");
+  var drop = document.getElementById("drop");
+  var fileInput = document.getElementById("files");
+  var listEl = document.getElementById("fileList");
+  var errorEl = document.getElementById("error");
+  var submitBtn = document.getElementById("submit");
+  var formView = document.getElementById("formView");
+  var doneView = document.getElementById("doneView");
+  var doneText = document.getElementById("doneText");
+
+  var files = [];
+  var previews = [];
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.hidden = !msg;
+  }
+
+  function fmtSize(b) {
+    return b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+  }
+
+  function addFiles(list) {
+    showError("");
+    Array.prototype.forEach.call(list, function (f) {
+      var okType = /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name);
+      if (!okType) return showError('"' + f.name + '" is not a photo. Attach a clear JPG, PNG or WEBP image.');
+      if (f.size > MAX_BYTES) return showError('"' + f.name + '" is larger than 10 MB.');
+      if (files.length >= MAX_FILES) return showError("You can attach at most " + MAX_FILES + " photos at a time.");
+      files.push(f);
+    });
+    renderList();
+  }
+
+  function renderList() {
+    previews.forEach(function (u) { URL.revokeObjectURL(u); });
+    previews = [];
+    listEl.innerHTML = "";
+    files.forEach(function (f, i) {
+      var li = document.createElement("li");
+      var thumb = document.createElement("img");
+      var url = URL.createObjectURL(f);
+      previews.push(url);
+      thumb.src = url;
+      thumb.alt = "";
+      var meta = document.createElement("span");
+      meta.className = "meta";
+      var nm = document.createElement("span");
+      nm.className = "fname";
+      nm.textContent = f.name;
+      var sz = document.createElement("span");
+      sz.className = "fsize";
+      sz.textContent = fmtSize(f.size);
+      meta.appendChild(nm);
+      meta.appendChild(sz);
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "remove";
+      rm.setAttribute("aria-label", "Remove " + f.name);
+      rm.textContent = "Remove";
+      rm.addEventListener("click", function () {
+        files.splice(i, 1);
+        renderList();
+      });
+      li.appendChild(thumb);
+      li.appendChild(meta);
+      li.appendChild(rm);
+      listEl.appendChild(li);
+    });
+  }
+
+  drop.addEventListener("click", function () { fileInput.click(); });
+  drop.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", function () {
+    addFiles(fileInput.files);
+    fileInput.value = "";
+  });
+  ["dragenter", "dragover"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      drop.classList.add("over");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      drop.classList.remove("over");
+    });
+  });
+  drop.addEventListener("drop", function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    showError("");
+
+    var name = nameEl.value.replace(/\s+/g, " ").trim();
+    var reg = regEl.value.replace(/\s+/g, "").toUpperCase();
+
+    if (name.length < 3) { nameEl.focus(); return showError("Enter your full name."); }
+    if (!/^[A-Z0-9\/\-_.]{3,30}$/.test(reg)) { regEl.focus(); return showError("Enter a valid registration number."); }
+
+    try {
+      if (!reg.includes("ME")) {
+        throw new Error("Invalid registration number. Registration number must belong to Mechanical Engineering (must include 'ME', e.g. 22/EG/ME/001).");
+      }
+    } catch (valErr) {
+      regEl.focus();
+      return showError(valErr.message);
+    }
+
+    if (files.length === 0) return showError("Attach at least one receipt.");
+
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("regNumber", reg);
+    files.forEach(function (f) { fd.append("receipts", f, f.name); });
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Uploading\u2026";
+
+    fetch("/api/submit", { method: "POST", body: fd })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: r.ok, data: data };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.data.error || "Upload failed. Please try again.");
+        var n = res.data.count;
+        doneText.textContent =
+          n + (n === 1 ? " receipt was" : " receipts were") + " saved for " + res.data.name +
+          " (" + res.data.regNumber + ").";
+        formView.hidden = true;
+        doneView.hidden = false;
+      })
+      .catch(function (err) {
+        showError(err.message === "Failed to fetch" ? "No connection. Check your network and try again." : err.message);
+      })
+      .then(function () {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit receipts";
+      });
+  });
+
+  document.getElementById("again").addEventListener("click", function () {
+    files = [];
+    renderList();
+    nameEl.value = "";
+    regEl.value = "";
+    doneView.hidden = true;
+    formView.hidden = false;
+    nameEl.focus();
+  });
+})();
