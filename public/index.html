@@ -4,63 +4,78 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Submit payment receipt</title>
+  <title>Receipt Submission Portal | Mechanical Engineering</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 
 <body class="student">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="badge">NIMechE</span>
+        <span class="brand-text">Department of Mechanical Engineering</span>
+      </div>
+      <div class="session-tag">SWEEP II Register</div>
+    </div>
+  </header>
+
   <main class="wrap">
-    <header class="masthead">
-      <h1>Receipts Submission Portal for Mechanical Engineering student</h1>
-      <p>Attach a clear photo of each receipt of payment for SWEEP II materials.</p>
-      <ul>
-        <li>The name you enter must be the same as the name on the receipt.</li>
-        <li>If you paid for someone else, enter the name shown in the narration (payment description) on the receipt.
-        </li>
-        <li>Only enter registration numbers from Mechanical Engineering. Do not upload receipts for any other
-          department.</li>
-      </ul>
-    </header>
+    <div class="portal-card">
+      <header class="card-head">
+        <h1>Payment Receipts Submission</h1>
+        <p>Official submission portal for Mechanical Engineering students payment receipts.</p>
+      </header>
 
-    <section class="slip" id="formView">
-      <form id="form" novalidate>
-        <div class="field">
-          <label for="name">Full name</label>
-          <input id="name" name="name" type="text" autocomplete="name" maxlength="100" placeholder="e.g. Chinedu Okafor"
-            required>
-        </div>
+      <div class="notice-box">
+        <strong>Important Submission Guidelines:</strong>
+        <ul>
+          <li>The full name you enter must match the name on your payment receipt.</li>
+          <li>If paid via transfer for someone else, enter the beneficiary name shown on the receipt narration.</li>
+          <li>Only Mechanical Engineering registration numbers (containing <code>ME</code>, e.g. <code>22/EG/ME/001</code>) are accepted.</li>
+        </ul>
+      </div>
 
-        <div class="field">
-          <label for="reg">Registration number</label>
-          <input id="reg" name="regNumber" type="text" autocomplete="off" autocapitalize="characters" maxlength="30"
-            placeholder="e.g. 22/EG/ME/001" required>
-        </div>
-
-        <div class="field">
-          <span class="label" id="filesLabel">Payment receipt photos</span>
-          <div class="drop" id="drop" tabindex="0" role="button" aria-labelledby="filesLabel">
-            <input id="files" type="file" accept="image/*,.jpg,.jpeg,.png,.webp" multiple hidden>
-            <strong>Tap to choose receipt photos</strong>
-            <span>or drag photos here. Clear JPG, PNG or WEBP photos, up to 10&nbsp;MB each (max 5 photos).</span>
+      <section id="formView">
+        <form id="form" novalidate>
+          <div class="field">
+            <label for="name">Full Name</label>
+            <input id="name" name="name" type="text" autocomplete="name" maxlength="100" placeholder="e.g. Chinedu Okafor" required>
           </div>
-          <ul class="filelist" id="fileList" aria-live="polite"></ul>
-        </div>
 
-        <p class="error" id="error" role="alert" hidden></p>
+          <div class="field">
+            <label for="reg">Registration Number</label>
+            <input id="reg" name="regNumber" type="text" autocomplete="off" autocapitalize="characters" maxlength="30" placeholder="e.g. 22/EG/ME/001" required>
+          </div>
 
-        <button class="primary" id="submit" type="submit">Submit receipts</button>
-      </form>
-    </section>
+          <div class="field">
+            <span class="label" id="filesLabel">Payment Receipt Photo(s)</span>
+            <div class="drop" id="drop" tabindex="0" role="button" aria-labelledby="filesLabel">
+              <input id="files" type="file" accept="image/*,.jpg,.jpeg,.png,.webp" multiple hidden>
+              <div class="drop-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </div>
+              <strong>Click to upload receipt photo</strong>
+              <span>or drag and drop photos here (JPG, PNG, WEBP — max 5 photos)</span>
+            </div>
+            <ul class="filelist" id="fileList" aria-live="polite"></ul>
+          </div>
 
-    <section class="slip done" id="doneView" hidden>
-      <div class="tick" aria-hidden="true">&#10003;</div>
-      <h2>Receipts received</h2>
-      <p id="doneText"></p>
-      <button class="secondary" id="again" type="button">Submit another receipt</button>
-    </section>
+          <p class="error" id="error" role="alert" hidden></p>
+
+          <button class="primary" id="submit" type="submit">Submit Receipts</button>
+        </form>
+      </section>
+
+      <section class="done" id="doneView" hidden>
+        <div class="tick" aria-hidden="true">&#10003;</div>
+        <h2>Receipt Successfully Submitted</h2>
+        <p id="doneText"></p>
+        <button class="secondary" id="again" type="button">Submit Another Receipt</button>
+      </section>
+    </div>
   </main>
   <script src="/app.js"></script>
 </body>

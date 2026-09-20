@@ -4,45 +4,61 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Admin: payment receipts</title>
+  <title>Admin Dashboard | Receipts Register</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body class="admin">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="badge">NIMechE</span>
+        <span class="brand-text">Department of Mechanical Engineering</span>
+      </div>
+      <div class="session-tag">Admin Management Portal</div>
+    </div>
+  </header>
+
   <section class="login" id="loginView" hidden>
-    <form id="loginForm" class="slip">
-      <h1>Admin sign in</h1>
+    <form id="loginForm" class="login-card">
+      <div class="login-head">
+        <h2>Admin Authentication</h2>
+        <p>Sign in to access student payment receipts and export documents.</p>
+      </div>
       <div class="field">
-        <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password" required>
+        <label for="password">Admin Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
       </div>
       <p class="error" id="loginError" role="alert" hidden></p>
-      <button class="primary" type="submit">Sign in</button>
+      <button class="primary" type="submit">Sign In to Dashboard</button>
     </form>
   </section>
 
   <main class="dash" id="dashView" hidden>
     <header class="dash-head">
       <div>
-        <h1>Payment receipts</h1>
-        <p class="sub" id="summary">Loading&hellip;</p>
+        <h1>Payment Receipts Register</h1>
+        <p class="sub" id="summary">Loading submissions&hellip;</p>
       </div>
-      <button class="secondary small" id="logout" type="button">Sign out</button>
+      <button class="secondary small logout-btn" id="logout" type="button">Sign Out</button>
     </header>
 
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search name or reg. number" aria-label="Search">
+      <div class="search-wrap">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="search" type="search" placeholder="Search by student name or reg. number..." aria-label="Search">
+      </div>
       <div class="actions">
         <button class="primary small" id="btnFull" type="button">Download PDF</button>
         <button class="secondary small" id="btnPrint" type="button">Print</button>
-        <button class="secondary small" id="btnTable" type="button">Register only</button>
-        <button class="secondary small" id="btnCsv" type="button">CSV</button>
-        <button class="danger small" id="btnDeleteSelected" type="button" hidden>Delete selected</button>
+        <button class="secondary small" id="btnTable" type="button">Register Only</button>
+        <button class="secondary small" id="btnCsv" type="button">Export CSV</button>
+        <button class="danger small" id="btnDeleteSelected" type="button" hidden>Delete Selected</button>
       </div>
     </div>
-    <p class="hint" id="hint">Download PDF and Print include the register table followed by every receipt. They use all students unless you tick rows.</p>
+    <p class="hint" id="hint">Download PDF and Print generate formatted A4 documents. Tick rows to filter export by selected students.</p>
 
     <div class="tablewrap">
       <table id="table">
@@ -50,10 +66,10 @@
           <tr>
             <th class="chk"><input type="checkbox" id="selectAll" aria-label="Select all"></th>
             <th class="sn">S/N</th>
-            <th>Full name</th>
-            <th>Reg. number</th>
+            <th>Full Name</th>
+            <th>Reg. Number</th>
             <th class="num">Receipts</th>
-            <th>Submitted</th>
+            <th>Submission Date</th>
             <th class="rowactions"><span class="sr">Actions</span></th>
           </tr>
         </thead>
