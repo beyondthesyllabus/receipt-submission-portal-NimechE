@@ -1,15 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>Admin Dashboard | Receipts Register</title>
+  <link rel="icon" type="image/png" href="/Images/mech.png">
+  <link rel="apple-touch-icon" href="/Images/mech.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
+
 <body class="admin">
   <header class="topbar">
     <div class="topbar-inner">
@@ -47,7 +52,11 @@
 
     <div class="toolbar">
       <div class="search-wrap">
-        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
         <input id="search" type="search" placeholder="Search by student name or reg. number..." aria-label="Search">
       </div>
       <div class="actions">
@@ -58,7 +67,8 @@
         <button class="danger small" id="btnDeleteSelected" type="button" hidden>Delete Selected</button>
       </div>
     </div>
-    <p class="hint" id="hint">Download PDF and Print generate formatted A4 documents. Tick rows to filter export by selected students.</p>
+    <p class="hint" id="hint">Download PDF and Print generate formatted A4 documents. Tick rows to filter export by
+      selected students.</p>
 
     <div class="tablewrap">
       <table id="table">
@@ -81,4 +91,5 @@
 
   <script src="/admin.js"></script>
 </body>
+
 </html>
