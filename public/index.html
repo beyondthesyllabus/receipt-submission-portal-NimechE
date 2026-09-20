@@ -7,7 +7,8 @@
   <title>Receipt Submission Portal | Mechanical Engineering</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 
@@ -34,7 +35,8 @@
         <ul>
           <li>The full name you enter must match the name on your payment receipt.</li>
           <li>If paid via transfer for someone else, enter the beneficiary name shown on the receipt narration.</li>
-          <li>Only Mechanical Engineering registration numbers (containing <code>ME</code>, e.g. <code>22/EG/ME/001</code>) are accepted.</li>
+          <li>Only Mechanical Engineering registration numbers (containing <code>ME</code>, e.g.
+            <code>22/EG/ME/001</code>) are accepted.</li>
         </ul>
       </div>
 
@@ -42,12 +44,14 @@
         <form id="form" novalidate>
           <div class="field">
             <label for="name">Full Name</label>
-            <input id="name" name="name" type="text" autocomplete="name" maxlength="100" placeholder="e.g. Chinedu Okafor" required>
+            <input id="name" name="name" type="text" autocomplete="name" maxlength="100"
+              placeholder="e.g. Chinedu Okafor" required>
           </div>
 
           <div class="field">
             <label for="reg">Registration Number</label>
-            <input id="reg" name="regNumber" type="text" autocomplete="off" autocapitalize="characters" maxlength="30" placeholder="e.g. 22/EG/ME/001" required>
+            <input id="reg" name="regNumber" type="text" autocomplete="off" autocapitalize="characters" maxlength="30"
+              placeholder="e.g. 22/EG/ME/001" required>
           </div>
 
           <div class="field">
@@ -55,10 +59,14 @@
             <div class="drop" id="drop" tabindex="0" role="button" aria-labelledby="filesLabel">
               <input id="files" type="file" accept="image/*,.jpg,.jpeg,.png,.webp" multiple hidden>
               <div class="drop-icon">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
               </div>
               <strong>Click to upload receipt photo</strong>
-              <span>or drag and drop photos here (JPG, PNG, WEBP — max 5 photos)</span>
+              <span>or drag and drop your photo here (JPG, PNG, WEBP — one receipt only)</span>
             </div>
             <ul class="filelist" id="fileList" aria-live="polite"></ul>
           </div>

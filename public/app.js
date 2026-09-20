@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var MAX_FILES = 5;
+  var MAX_FILES = 1;
   var MAX_BYTES = 10 * 1024 * 1024;
 
   var form = document.getElementById("form");
@@ -34,7 +34,8 @@
       var okType = /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name);
       if (!okType) return showError('"' + f.name + '" is not a photo. Attach a clear JPG, PNG or WEBP image.');
       if (f.size > MAX_BYTES) return showError('"' + f.name + '" is larger than 10 MB.');
-      if (files.length >= MAX_FILES) return showError("You can attach at most " + MAX_FILES + " photos at a time.");
+      if (MAX_FILES === 1) files = []; // choosing a new photo replaces the old one
+      else if (files.length >= MAX_FILES) return showError("You can attach at most " + MAX_FILES + " photos.");
       files.push(f);
     });
     renderList();
@@ -123,7 +124,7 @@
       return showError(valErr.message);
     }
 
-    if (files.length === 0) return showError("Attach at least one receipt.");
+    if (files.length === 0) return showError("Attach your receipt photo.");
 
     var fd = new FormData();
     fd.append("name", name);

@@ -14,7 +14,7 @@ try {
     pragma(str) {
       try {
         this._db.exec(`PRAGMA ${str}`);
-      } catch (e) {}
+      } catch (e) { }
     }
     exec(sql) {
       return this._db.exec(sql);
@@ -64,8 +64,10 @@ const SESSION_SECRET =
 const SITE_TITLE = process.env.SITE_TITLE || "Payment Receipts Register";
 
 const MAX_FILE_MB = 10;
-const MAX_FILES_PER_SUBMISSION = 5;
+const MAX_FILES_PER_SUBMISSION = 1;
 const SESSION_HOURS = 8;
+const ALREADY_SUBMITTED =
+  "A receipt has already been submitted for this registration number. Contact the admin if it needs to be changed.";
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -217,7 +219,7 @@ app.use((req, res, next) => {
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
-        "font-src https://fonts.gstatic.com; img-src 'self' data: blob:; frame-ancestors 'none'"
+      "font-src https://fonts.gstatic.com; img-src 'self' data: blob:; frame-ancestors 'none'"
     );
   }
   next();
@@ -357,8 +359,7 @@ app.post("/api/admin/login", loginLimiter, (req, res) => {
   const secure = req.secure ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `admin=${encodeURIComponent(makeToken())}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${
-      SESSION_HOURS * 3600
+    `admin=${encodeURIComponent(makeToken())}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_HOURS * 3600
     }${secure}`
   );
   res.json({ ok: true });
