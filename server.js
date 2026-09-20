@@ -400,7 +400,10 @@ app.get("/api/admin/receipts/:id/file", requireAdmin, (req, res) => {
   const full = path.join(UPLOAD_DIR, path.basename(r.file));
   if (!fs.existsSync(full)) return res.status(404).end();
   res.setHeader("Content-Type", r.kind === "pdf" ? "application/pdf" : "image/jpeg");
-  res.setHeader("Cache-Control", "private, max-age=3600");
+  const etag = `"${r.file}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", "private, no-cache");
+  if (req.headers["if-none-match"] === etag) return res.status(304).end();
   fs.createReadStream(full).pipe(res);
 });
 
