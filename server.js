@@ -53,7 +53,9 @@ const path = require("path");
 // Config
 // ---------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  (process.env.VERCEL ? "/tmp" : path.join(__dirname, "data"));
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Mech001";
 const SESSION_SECRET =
@@ -761,7 +763,11 @@ app.get("/api/admin/export.csv", requireAdmin, (req, res) => {
 app.get("/admin", (req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
-app.listen(PORT, () => {
-  console.log(`Receipt portal running:  http://localhost:${PORT}`);
-  console.log(`Admin page:              http://localhost:${PORT}/admin`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Receipt portal running:  http://localhost:${PORT}`);
+    console.log(`Admin page:              http://localhost:${PORT}/admin`);
+  });
+}
+
+module.exports = app;
