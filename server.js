@@ -474,10 +474,41 @@ async function buildPdf(students, { includeReceipts }) {
   if (students.length === 0) {
     page.drawText("No submissions yet.", { x: MARGIN + 8, y: y - 20, size: 10.5, font, color: MUTED });
   }
-  students.forEach((s, i) => {
-    if (y - ROW_H < BOTTOM) startTablePage(false);
+
+  const groupCounts = new Map();
+  students.forEach((s) => {
+    const g = yearOf(s.reg_number);
+    groupCounts.set(g, (groupCounts.get(g) || 0) + 1);
+  });
+
+  const ensureSpace = (rows) => {
+    if (y - ROW_H * rows < BOTTOM) startTablePage(false);
+  };
+
+  let lastGroup = null;
+  students.forEach((s) => {
+    const g = yearOf(s.reg_number);
+    if (g !== lastGroup) {
+      ensureSpace(2); // heading plus at least one student
+      const n = groupCounts.get(g);
+      const heading =
+        (g === "Other" ? "Other registration numbers" : `Registration numbers starting with ${g}/`) +
+        `   (${n} ${n === 1 ? "student" : "students"})`;
+      page.drawRectangle({
+        x: MARGIN,
+        y: y - ROW_H,
+        width: tableW,
+        height: ROW_H,
+        color: rgb(0.86, 0.9, 0.96),
+      });
+      page.drawText(pdfSafe(heading), { x: MARGIN + 8, y: y - 16, size: 10, font: bold, color: INK });
+      y -= ROW_H;
+      lastGroup = g;
+      sn = 0; // numbering starts again at 1 for each group
+    }
+    ensureSpace(1);
     sn++;
-    if (i % 2 === 1)
+    if (sn % 2 === 0)
       page.drawRectangle({ x: MARGIN, y: y - ROW_H, width: tableW, height: ROW_H, color: SHADE });
     const cells = [
       String(sn),
@@ -501,7 +532,7 @@ async function buildPdf(students, { includeReceipts }) {
     for (const s of students) {
       const total = s.receipts.length;
       for (let i = 0; i < total; i++) {
-        items.push({ student: s, receipt: s.receipts[i], index: i + 1, total });
+        items.push({ student: s, receipt: s.receipts[i], index: i + 1, total, group: yearOf(s.reg_number) });
       }
     }
 
@@ -520,7 +551,12 @@ async function buildPdf(students, { includeReceipts }) {
     let currentPage = null;
     let slotOnPage = 0;
 
+    let lastCardGroup = null;
     const drawCard = async (item, bytes) => {
+      if (item.group !== lastCardGroup) {
+        currentPage = null; // each group's receipts start on a new page
+        lastCardGroup = item.group;
+      }
       if (!currentPage || slotOnPage >= CARDS_PER_PAGE) {
         currentPage = pdf.addPage([A4.w, A4.h]);
         slotOnPage = 0;
@@ -635,6 +671,19 @@ async function buildPdf(students, { includeReceipts }) {
   return Buffer.from(await pdf.save());
 }
 
+// The first part of a registration number (22 in 22/EG/ME/1692) decides which group a student is in.
+function yearOf(reg) {
+  const m = /^(\d{1,4})\//.exec(String(reg));
+  return m ? m[1] : "Other";
+}
+
+// Sort by registration number, comparing the numbers inside it as numbers (1707 comes after 1692).
+function orderStudents(list) {
+  return list
+    .slice()
+    .sort((a, b) => a.reg_number.localeCompare(b.reg_number, undefined, { numeric: true }));
+}
+
 function parseIds(idsParam) {
   if (!idsParam) return null;
   const ids = String(idsParam)
@@ -657,7 +706,7 @@ function sendPdf(req, res, buffer, filename) {
 // Full document: register table followed by every receipt (optionally only chosen students)
 app.get("/api/admin/export.pdf", requireAdmin, async (req, res) => {
   try {
-    const students = await store.listStudents(parseIds(req.query.ids));
+    const students = orderStudents(await store.listStudents(parseIds(req.query.ids)));
     let filename = `receipts-${today()}.pdf`;
     if (students.length === 1) {
       const s = students[0];
@@ -674,7 +723,7 @@ app.get("/api/admin/export.pdf", requireAdmin, async (req, res) => {
 // Register table only
 app.get("/api/admin/table.pdf", requireAdmin, async (req, res) => {
   try {
-    const students = await store.listStudents(parseIds(req.query.ids));
+    const students = orderStudents(await store.listStudents(parseIds(req.query.ids)));
     sendPdf(req, res, await buildPdf(students, { includeReceipts: false }), `register-${today()}.pdf`);
   } catch (e) {
     serverError(res, e, "Could not build the PDF.");
@@ -685,7 +734,7 @@ app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
   try {
     const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
     const rows = [["S/N", "Full name", "Reg number", "Receipts", "Submitted"].map(esc).join(",")];
-    (await store.listStudents()).forEach((s, i) =>
+    orderStudents(await store.listStudents()).forEach((s, i) =>
       rows.push([i + 1, s.name, s.reg_number, s.receipt_count, fmtDateTime(s.created_at)].map(esc).join(","))
     );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");

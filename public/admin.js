@@ -11,14 +11,18 @@
   var searchEl = document.getElementById("search");
   var selectAll = document.getElementById("selectAll");
   var hintEl = document.getElementById("hint");
+  var tabsEl = document.getElementById("tabs");
   var btnFull = document.getElementById("btnFull");
   var btnPrint = document.getElementById("btnPrint");
   var btnTable = document.getElementById("btnTable");
-  var btnDeleteSelected = document.getElementById("btnDeleteSelected");
 
   var students = [];
   var selected = new Set();
   var expanded = new Set();
+  var activeYear = "all"; // "all" or a prefix such as "22"
+
+  var DEFAULT_HINT =
+    "Download PDF and Print include the register table followed by every receipt. They use all students unless you tick rows.";
 
   function h(tag, attrs) {
     var el = document.createElement(tag);
@@ -47,12 +51,60 @@
     });
   }
 
+  // Nigerian time, 12-hour clock
   function fmtDate(iso) {
     return new Date(iso).toLocaleString("en-GB", {
       timeZone: "Africa/Lagos", day: "2-digit", month: "short", year: "numeric",
       hour: "numeric", minute: "2-digit", hour12: true
     });
   }
+
+  // ---- Groups (22/EG/ME/... and 23/EG/ME/... are kept apart) ---------------
+  function yearOf(reg) {
+    var m = /^(\d{1,4})\//.exec(reg);
+    return m ? m[1] : "Other";
+  }
+
+  function yearLabel(y) {
+    return y === "Other" ? "Other" : y + "/\u2026";
+  }
+
+  function byReg(a, b) {
+    return a.reg_number.localeCompare(b.reg_number, undefined, { numeric: true });
+  }
+
+  function yearCounts() {
+    var counts = {};
+    var order = [];
+    students.forEach(function (s) {
+      var y = yearOf(s.reg_number);
+      if (!(y in counts)) { counts[y] = 0; order.push(y); }
+      counts[y]++;
+    });
+    return { counts: counts, order: order };
+  }
+
+  function renderTabs() {
+    var yc = yearCounts();
+    tabsEl.innerHTML = "";
+    tabsEl.hidden = yc.order.length < 2;
+
+    function addTab(key, text, n) {
+      var on = activeYear === key;
+      tabsEl.appendChild(
+        h("button", {
+          class: "tab" + (on ? " active" : ""),
+          type: "button",
+          "aria-pressed": String(on),
+          onclick: function () { activeYear = key; render(); }
+        }, text + " ", h("span", { class: "count", text: String(n) }))
+      );
+    }
+
+    addTab("all", "All", students.length);
+    yc.order.forEach(function (y) { addTab(y, yearLabel(y), yc.counts[y]); });
+  }
+
   // ---- Auth ---------------------------------------------------------------
   function showLogin() {
     dashView.hidden = true;
@@ -94,33 +146,65 @@
   // ---- Data ---------------------------------------------------------------
   function load() {
     return api("/api/admin/students").then(function (d) {
-      students = d.students;
+      students = d.students.slice().sort(byReg);
       var ids = new Set(students.map(function (s) { return s.id; }));
       selected.forEach(function (id) { if (!ids.has(id)) selected.delete(id); });
+      if (activeYear !== "all" && !(activeYear in yearCounts().counts)) activeYear = "all";
       render();
     }).catch(function () { });
   }
 
+  function inGroup(s) {
+    return activeYear === "all" || yearOf(s.reg_number) === activeYear;
+  }
+
   function visible() {
     var term = searchEl.value.trim().toLowerCase();
-    if (!term) return students;
     return students.filter(function (s) {
+      if (!inGroup(s)) return false;
+      if (!term) return true;
       return s.name.toLowerCase().indexOf(term) !== -1 || s.reg_number.toLowerCase().indexOf(term) !== -1;
     });
   }
 
   function render() {
     var list = visible();
+    var yc = yearCounts();
     var totalReceipts = students.reduce(function (n, s) { return n + s.receipt_count; }, 0);
     summaryEl.textContent = students.length + (students.length === 1 ? " student, " : " students, ") +
       totalReceipts + (totalReceipts === 1 ? " receipt" : " receipts");
+
+    renderTabs();
 
     rowsEl.innerHTML = "";
     emptyEl.hidden = list.length !== 0;
     emptyEl.textContent = students.length === 0 ? "No submissions yet." : "No matches.";
 
+    var lastYear = null;
+    var sn = 0;
+
     list.forEach(function (s) {
-      var sn = students.indexOf(s) + 1;
+      var y = yearOf(s.reg_number);
+
+      if (y !== lastYear) {
+        // In the "All" view, each group gets a heading row and numbering starts again at 1.
+        if (activeYear === "all") {
+          var n = yc.counts[y];
+          rowsEl.appendChild(
+            h("tr", { class: "group" },
+              h("td", {
+                colspan: "7",
+                text: (y === "Other" ? "Other registration numbers" : "Registration numbers starting with " + y + "/") +
+                  "  \u00b7  " + n + (n === 1 ? " student" : " students")
+              })
+            )
+          );
+        }
+        lastYear = y;
+        sn = 0;
+      }
+      sn++;
+
       var cb = h("input", { type: "checkbox", "aria-label": "Select " + s.name });
       cb.checked = selected.has(s.id);
       cb.addEventListener("change", function () {
@@ -134,19 +218,15 @@
         h("td", { class: "sn", text: String(sn) }),
         h("td", { class: "name", text: s.name }),
         h("td", { class: "reg", text: s.reg_number }),
-
+        h("td", { class: "num", text: String(s.receipt_count) }),
         h("td", { class: "date", text: fmtDate(s.created_at) }),
         h("td", { class: "rowactions" },
           h("button", {
-            class: "link", type: "button", text: open ? "Hide" : "View",
+            class: "link", type: "button", text: open ? "Hide receipts" : "View receipts",
             onclick: function () {
               if (expanded.has(s.id)) expanded.delete(s.id); else expanded.add(s.id);
               render();
             }
-          }),
-          h("button", {
-            class: "link btn-dl", type: "button", text: "Download PDF",
-            onclick: function () { download(exportUrl("/api/admin/export.pdf?ids=" + s.id, true)); }
           }),
           h("button", {
             class: "link", type: "button", text: "Print",
@@ -197,15 +277,17 @@
     var list = visible();
     selectAll.checked = list.length > 0 && list.every(function (s) { return selected.has(s.id); });
     var n = selected.size;
-    var suffix = n ? " (" + n + " selected)" : "";
+    var suffix = "";
+    if (n) suffix = " (" + n + " selected)";
+    else if (activeYear !== "all") suffix = " (" + yearLabel(activeYear) + " only)";
     btnFull.textContent = "Download PDF" + suffix;
     btnPrint.textContent = "Print" + suffix;
     btnTable.textContent = "Register only" + suffix;
-    btnDeleteSelected.hidden = n === 0;
-    btnDeleteSelected.textContent = "Delete selected (" + n + ")";
-    hintEl.textContent = n
-      ? n + " selected. Ticking rows lets you download, print, or delete specific submissions."
-      : "Download PDF and Print include the register table followed by every receipt. They use all students unless you tick rows.";
+    if (n) hintEl.textContent = n + " selected. Clear the ticks to export the whole list.";
+    else if (activeYear !== "all")
+      hintEl.textContent = "Downloads and prints use only the " + yearLabel(activeYear) +
+        " students. Tick rows to choose specific students.";
+    else hintEl.textContent = DEFAULT_HINT;
   }
 
   selectAll.addEventListener("change", function () {
@@ -217,29 +299,22 @@
 
   searchEl.addEventListener("input", render);
 
-  btnDeleteSelected.addEventListener("click", function () {
-    var n = selected.size;
-    if (!n) return;
-    if (!confirm("Are you sure you want to delete " + n + " selected submission" + (n === 1 ? "" : "s") + "? This will permanently remove their records and all attached receipt photos.")) return;
-    var ids = Array.from(selected);
-    Promise.all(ids.map(function (id) {
-      return api("/api/admin/students/" + id, { method: "DELETE" });
-    }))
-      .then(function () {
-        selected.clear();
-        load();
-      })
-      .catch(alertErr);
-  });
-
   // ---- Exports ------------------------------------------------------------
+  // Ticked rows win; otherwise the open group (22/..., 23/...); otherwise everyone.
+  function exportIds() {
+    if (selected.size) return Array.from(selected);
+    if (activeYear !== "all") {
+      return students.filter(inGroup).map(function (s) { return s.id; });
+    }
+    return null;
+  }
+
   function exportUrl(path, download) {
-    var hasQuery = path.indexOf("?") !== -1;
     var params = [];
-    if (!hasQuery && selected.size) params.push("ids=" + Array.from(selected).join(","));
-    if (download && path.indexOf("download=") === -1) params.push("download=1");
-    if (!params.length) return path;
-    return path + (hasQuery ? "&" : "?") + params.join("&");
+    var ids = exportIds();
+    if (ids) params.push("ids=" + ids.join(","));
+    if (download) params.push("download=1");
+    return path + (params.length ? "?" + params.join("&") : "");
   }
 
   function download(url) {
@@ -275,8 +350,6 @@
       btnRefresh.textContent = "Refresh";
     });
   });
-
-
 
   // ---- Boot ---------------------------------------------------------------
   fetch("/api/admin/me")
