@@ -28,7 +28,7 @@ const MAX_FILE_MB = 4;
 const MAX_FILES_PER_SUBMISSION = 1;
 const SESSION_HOURS = 8;
 const ALREADY_SUBMITTED =
-  "A receipt has already been submitted for this registration number. Contact the admin if it needs to be changed.";
+  "This registration number has already been used to submit a receipt. Each student can submit only once. If you made a mistake, please contact the admin.";
 
 if (!process.env.ADMIN_PASSWORD) {
   console.warn(
