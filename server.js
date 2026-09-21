@@ -1,122 +1,45 @@
 "use strict";
 
+require("dotenv").config(); // reads a local .env file if present (Vercel uses its own settings)
+
 const express = require("express");
 const multer = require("multer");
-let Database;
-try {
-  Database = require("better-sqlite3");
-} catch {
-  const { DatabaseSync } = require("node:sqlite");
-  Database = class NodeSqliteAdapter {
-    constructor(file) {
-      this._db = new DatabaseSync(file);
-    }
-    pragma(str) {
-      try {
-        this._db.exec(`PRAGMA ${str}`);
-      } catch (e) { }
-    }
-    exec(sql) {
-      return this._db.exec(sql);
-    }
-    prepare(sql) {
-      const stmt = this._db.prepare(sql);
-      return {
-        get: (...args) => stmt.get(...args),
-        all: (...args) => stmt.all(...args),
-        run: (...args) => stmt.run(...args),
-      };
-    }
-    transaction(fn) {
-      return (...args) => {
-        this._db.exec("BEGIN IMMEDIATE");
-        try {
-          const res = fn(...args);
-          this._db.exec("COMMIT");
-          return res;
-        } catch (e) {
-          this._db.exec("ROLLBACK");
-          throw e;
-        }
-      };
-    }
-  };
-}
 const sharp = require("sharp");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const store = require("./store");
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-const DATA_DIR =
-  process.env.DATA_DIR ||
-  (process.env.VERCEL ? "/tmp" : path.join(__dirname, "data"));
-const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Mech001";
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
   crypto.createHash("sha256").update("receipt-portal:" + ADMIN_PASSWORD).digest("hex");
 const SITE_TITLE = process.env.SITE_TITLE || "Payment Receipts Register";
 
-const MAX_FILE_MB = 10;
+// Vercel rejects request bodies over ~4.5 MB. The upload page shrinks photos before sending,
+// so 4 MB per file is plenty.
+const MAX_FILE_MB = 4;
 const MAX_FILES_PER_SUBMISSION = 1;
 const SESSION_HOURS = 8;
 const ALREADY_SUBMITTED =
   "A receipt has already been submitted for this registration number. Contact the admin if it needs to be changed.";
 
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-if (ADMIN_PASSWORD === "Mech001") {
+if (!process.env.ADMIN_PASSWORD) {
   console.warn(
-    "\n  NOTE: Using default ADMIN_PASSWORD 'Mech001'. Set ADMIN_PASSWORD='your-password' to override.\n"
+    "\n  NOTE: ADMIN_PASSWORD is not set, so the default password is in use. Set ADMIN_PASSWORD to a strong password.\n"
   );
 }
-
-// ---------------------------------------------------------------------------
-// Database
-// ---------------------------------------------------------------------------
-const db = new Database(path.join(DATA_DIR, "portal.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS students (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    reg_number  TEXT NOT NULL UNIQUE,
-    created_at  TEXT NOT NULL
+if (!store.configured) {
+  console.warn(
+    "\n  WARNING: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not set. Submissions and the admin page will not work until you add them.\n"
   );
-  CREATE TABLE IF NOT EXISTS receipts (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id    INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    file          TEXT NOT NULL,
-    kind          TEXT NOT NULL CHECK (kind IN ('image','pdf')),
-    original_name TEXT,
-    created_at    TEXT NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_receipts_student ON receipts(student_id);
-`);
-
-const q = {
-  studentByReg: db.prepare("SELECT * FROM students WHERE reg_number = ?"),
-  insertStudent: db.prepare("INSERT INTO students (name, reg_number, created_at) VALUES (?, ?, ?)"),
-  insertReceipt: db.prepare(
-    "INSERT INTO receipts (student_id, file, kind, original_name, created_at) VALUES (?, ?, ?, ?, ?)"
-  ),
-  listStudents: db.prepare(`
-    SELECT s.id, s.name, s.reg_number, s.created_at,
-           (SELECT COUNT(*) FROM receipts r WHERE r.student_id = s.id) AS receipt_count
-    FROM students s ORDER BY s.created_at ASC, s.id ASC`),
-  studentById: db.prepare("SELECT * FROM students WHERE id = ?"),
-  receiptsForStudent: db.prepare("SELECT * FROM receipts WHERE student_id = ? ORDER BY id ASC"),
-  receiptById: db.prepare("SELECT * FROM receipts WHERE id = ?"),
-  deleteReceipt: db.prepare("DELETE FROM receipts WHERE id = ?"),
-  deleteStudent: db.prepare("DELETE FROM students WHERE id = ?"),
-};
+}
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -164,7 +87,8 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ha, hb);
 }
 
-// Tiny in-memory rate limiter (per IP).
+// Tiny in-memory rate limiter (per IP). On Vercel each server copy keeps its own counts,
+// so this is a light speed bump, not a hard guarantee.
 function rateLimit({ windowMs, max, message }) {
   const hits = new Map();
   setInterval(() => {
@@ -188,6 +112,7 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+// All times are shown in Nigerian time (Africa/Lagos, UTC+1).
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString("en-GB", {
     timeZone: "Africa/Lagos",
@@ -209,6 +134,8 @@ function fmtDateTime(iso) {
   });
 }
 
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
+
 // ---------------------------------------------------------------------------
 // Security headers
 // ---------------------------------------------------------------------------
@@ -227,6 +154,13 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: "20kb" }));
+
+// If the Supabase keys are missing, say so clearly instead of failing in a confusing way.
+if (!store.configured) {
+  app.use("/api", (req, res) =>
+    res.status(503).json({ error: "The server is not set up yet. Please contact the admin." })
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Student submission
@@ -247,7 +181,6 @@ function isPdf(buf) {
 }
 
 async function processUpload(file) {
-  // Returns { buffer, kind, ext }
   if (isPdf(file.buffer)) {
     const err = new Error(
       `"${file.originalname}" is a PDF file. Please upload a clear photo (JPG, PNG or WEBP) of your receipt.`
@@ -258,11 +191,11 @@ async function processUpload(file) {
   try {
     const buffer = await sharp(file.buffer, { failOn: "error" })
       .rotate() // respect phone camera orientation
-      .resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true })
+      .resize({ width: 1800, height: 1800, fit: "inside", withoutEnlargement: true })
       .flatten({ background: "#ffffff" })
-      .jpeg({ quality: 88 })
+      .jpeg({ quality: 85 })
       .toBuffer();
-    return { buffer, kind: "image", ext: ".jpg" };
+    return buffer;
   } catch (e) {
     const err = new Error(
       `"${file.originalname}" is not a supported photo. Upload a clear JPG, PNG or WEBP image.`
@@ -279,14 +212,15 @@ app.post(
     upload.array("receipts", MAX_FILES_PER_SUBMISSION)(req, res, (err) => {
       if (!err) return next();
       let msg = "Upload failed. Please try again.";
-      if (err.code === "LIMIT_FILE_SIZE") msg = `Each file must be ${MAX_FILE_MB} MB or smaller.`;
+      if (err.code === "LIMIT_FILE_SIZE") msg = `The photo is too large. Please choose one under ${MAX_FILE_MB} MB.`;
       if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE")
-        msg = `You can upload at most ${MAX_FILES_PER_SUBMISSION} files at a time.`;
+        msg = "You can upload only one receipt.";
       res.status(400).json({ error: msg });
     });
   },
   async (req, res) => {
-    const written = [];
+    let uploadedFile = null;
+    let saved = false;
     try {
       const name = String(req.body.name || "").replace(/\s+/g, " ").trim();
       const reg = String(req.body.regNumber || "").replace(/\s+/g, "").toUpperCase();
@@ -297,53 +231,44 @@ app.post(
         return res.status(400).json({
           error: "Enter a valid registration number (letters, numbers, / - _ . only).",
         });
+      if (!reg.includes("ME"))
+        return res.status(400).json({
+          error:
+            "Registration number must belong to Mechanical Engineering (must contain 'ME', e.g. 22/EG/ME/001).",
+        });
+      if (!req.files || req.files.length === 0)
+        return res.status(400).json({ error: "Attach your receipt photo." });
+
+      // One receipt per registration number.
+      if (await store.getStudentByReg(reg)) return res.status(409).json({ error: ALREADY_SUBMITTED });
+
+      const file = req.files[0];
+      const jpeg = await processUpload(file);
+      const filename = crypto.randomBytes(16).toString("hex") + ".jpg";
+
+      await store.uploadFile(filename, jpeg);
+      uploadedFile = filename;
+
+      // The unique constraint on reg_number also protects against two people submitting at once.
+      const student = await store.createStudent(name, reg);
+      if (!student) return res.status(409).json({ error: ALREADY_SUBMITTED });
 
       try {
-        if (!reg.includes("ME")) {
-          const err = new Error("Registration number must belong to Mechanical Engineering (must contain 'ME', e.g. 22/EG/ME/001).");
-          err.status = 400;
-          throw err;
-        }
-      } catch (valErr) {
-        return res.status(valErr.status || 400).json({ error: valErr.message });
+        await store.addReceipt(student.id, filename, String(file.originalname).slice(0, 200));
+      } catch (e) {
+        await store.deleteStudent(student.id).catch(() => { });
+        throw e;
       }
+      saved = true;
 
-      if (!req.files || req.files.length === 0)
-        return res.status(400).json({ error: "Attach your receipt." });
-
-      if (q.studentByReg.get(reg))
-        return res.status(409).json({ error: ALREADY_SUBMITTED });
-
-      // Convert/validate every file first so a bad file rejects the whole submission.
-      const processed = [];
-      for (const f of req.files) processed.push({ ...(await processUpload(f)), original: f.originalname });
-
-      for (const p of processed) {
-        p.filename = crypto.randomBytes(16).toString("hex") + p.ext;
-        fs.writeFileSync(path.join(UPLOAD_DIR, p.filename), p.buffer);
-        written.push(p.filename);
-      }
-
-      const now = isoNow();
-      const tx = db.transaction(() => {
-        let student = q.studentByReg.get(reg);
-        if (!student) {
-          const info = q.insertStudent.run(name, reg, now);
-          student = { id: info.lastInsertRowid, name, reg_number: reg };
-        }
-        for (const p of processed) {
-          q.insertReceipt.run(student.id, p.filename, p.kind, String(p.original).slice(0, 200), now);
-        }
-        return student;
-      });
-      const student = tx();
-
-      res.json({ ok: true, name: student.name, regNumber: student.reg_number, count: processed.length });
+      res.json({ ok: true, name: student.name, regNumber: student.reg_number, count: 1 });
     } catch (e) {
-      written.forEach((f) => fs.rmSync(path.join(UPLOAD_DIR, f), { force: true }));
       if (e.status) return res.status(e.status).json({ error: e.message });
       console.error(e);
       res.status(500).json({ error: "Something went wrong on our side. Please try again." });
+    } finally {
+      // If anything failed after the photo was uploaded, don't leave an orphan file behind.
+      if (uploadedFile && !saved) await store.removeFiles([uploadedFile]).catch(() => { });
     }
   }
 );
@@ -381,52 +306,75 @@ app.get("/api/admin/me", (req, res) => {
 // ---------------------------------------------------------------------------
 // Admin data
 // ---------------------------------------------------------------------------
-app.get("/api/admin/students", requireAdmin, (req, res) => {
-  const students = q.listStudents.all().map((s) => ({
-    ...s,
-    receipts: q.receiptsForStudent.all(s.id).map((r) => ({
-      id: r.id,
-      kind: r.kind,
-      original_name: r.original_name,
-      created_at: r.created_at,
-    })),
-  }));
-  res.json({ students });
-});
-
-app.get("/api/admin/receipts/:id/file", requireAdmin, (req, res) => {
-  const r = q.receiptById.get(Number(req.params.id));
-  if (!r) return res.status(404).end();
-  const full = path.join(UPLOAD_DIR, path.basename(r.file));
-  if (!fs.existsSync(full)) return res.status(404).end();
-  res.setHeader("Content-Type", r.kind === "pdf" ? "application/pdf" : "image/jpeg");
-  const etag = `"${r.file}"`;
-  res.setHeader("ETag", etag);
-  res.setHeader("Cache-Control", "private, no-cache");
-  if (req.headers["if-none-match"] === etag) return res.status(304).end();
-  fs.createReadStream(full).pipe(res);
-});
-
-function removeFiles(receipts) {
-  receipts.forEach((r) => fs.rmSync(path.join(UPLOAD_DIR, path.basename(r.file)), { force: true }));
+function serverError(res, e, message) {
+  console.error(e);
+  res.status(500).json({ error: message || "Something went wrong. Please try again." });
 }
 
-app.delete("/api/admin/receipts/:id", requireAdmin, (req, res) => {
-  const r = q.receiptById.get(Number(req.params.id));
-  if (!r) return res.status(404).json({ error: "Not found" });
-  q.deleteReceipt.run(r.id);
-  removeFiles([r]);
-  res.json({ ok: true });
+app.get("/api/admin/students", requireAdmin, async (req, res) => {
+  try {
+    const students = (await store.listStudents()).map((s) => ({
+      id: s.id,
+      name: s.name,
+      reg_number: s.reg_number,
+      created_at: s.created_at,
+      receipt_count: s.receipt_count,
+      receipts: s.receipts.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        original_name: r.original_name,
+        created_at: r.created_at,
+      })),
+    }));
+    res.json({ students });
+  } catch (e) {
+    serverError(res, e, "Could not load submissions.");
+  }
 });
 
-app.delete("/api/admin/students/:id", requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const s = q.studentById.get(id);
-  if (!s) return res.status(404).json({ error: "Not found" });
-  const receipts = q.receiptsForStudent.all(id);
-  q.deleteStudent.run(id);
-  removeFiles(receipts);
-  res.json({ ok: true });
+app.get("/api/admin/receipts/:id/file", requireAdmin, async (req, res) => {
+  try {
+    const r = await store.getReceipt(Number(req.params.id));
+    if (!r) return res.status(404).end();
+    // Each photo has a unique random file name, so it doubles as the ETag: the browser
+    // re-checks every time and can never show a stale picture.
+    const etag = `"${r.file}"`;
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "private, no-cache");
+    if (req.headers["if-none-match"] === etag) return res.status(304).end();
+    const bytes = await store.downloadFile(r.file);
+    res.setHeader("Content-Type", "image/jpeg");
+    res.end(bytes);
+  } catch (e) {
+    console.error(e);
+    res.status(404).end();
+  }
+});
+
+app.delete("/api/admin/receipts/:id", requireAdmin, async (req, res) => {
+  try {
+    const r = await store.getReceipt(Number(req.params.id));
+    if (!r) return res.status(404).json({ error: "Not found" });
+    await store.deleteReceipt(r.id);
+    await store.removeFiles([r.file]);
+    // A student with no receipt left is removed too, so they are free to submit again.
+    if ((await store.countReceipts(r.student_id)) === 0) await store.deleteStudent(r.student_id);
+    res.json({ ok: true });
+  } catch (e) {
+    serverError(res, e);
+  }
+});
+
+app.delete("/api/admin/students/:id", requireAdmin, async (req, res) => {
+  try {
+    const s = await store.getStudentWithReceipts(Number(req.params.id));
+    if (!s) return res.status(404).json({ error: "Not found" });
+    await store.deleteStudent(s.id); // their receipt rows are removed automatically
+    await store.removeFiles(s.receipts.map((r) => r.file));
+    res.json({ ok: true });
+  } catch (e) {
+    serverError(res, e);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -516,7 +464,6 @@ async function buildPdf(students, { includeReceipts }) {
       );
       y -= 34;
     }
-    // header row
     page.drawRectangle({ x: MARGIN, y: y - ROW_H, width: tableW, height: ROW_H, color: INK });
     cols.forEach((c) =>
       page.drawText(c.label, { x: c.x + 8, y: y - 16, size: 9.5, font: bold, color: rgb(1, 1, 1) })
@@ -550,7 +497,7 @@ async function buildPdf(students, { includeReceipts }) {
     y -= ROW_H;
   });
 
-  // ---- Receipt pages (Grid Layout: 4 cards per A4 page) -------------------
+  // ---- Receipt pages (grid layout: 4 cards per A4 page) --------------------
   if (includeReceipts) {
     const items = [];
     for (const s of students) {
@@ -575,20 +522,17 @@ async function buildPdf(students, { includeReceipts }) {
     let currentPage = null;
     let slotOnPage = 0;
 
-    for (const item of items) {
+    const drawCard = async (item, bytes) => {
       if (!currentPage || slotOnPage >= CARDS_PER_PAGE) {
         currentPage = pdf.addPage([A4.w, A4.h]);
         slotOnPage = 0;
       }
-
       const bounds = getCardBounds(slotOnPage);
       slotOnPage++;
 
       const s = item.student;
-      const r = item.receipt;
       const label = `Receipt ${item.index} of ${item.total}`;
 
-      // Card Container Box
       currentPage.drawRectangle({
         x: bounds.x,
         y: bounds.yTop - bounds.height,
@@ -599,7 +543,6 @@ async function buildPdf(students, { includeReceipts }) {
         borderWidth: 0.8,
       });
 
-      // Card Header Strip
       const headerH = 46;
       currentPage.drawRectangle({
         x: bounds.x,
@@ -610,8 +553,6 @@ async function buildPdf(students, { includeReceipts }) {
         borderColor: LINE,
         borderWidth: 0.6,
       });
-
-      // Left Accent Strip
       currentPage.drawRectangle({
         x: bounds.x,
         y: bounds.yTop - headerH,
@@ -620,7 +561,6 @@ async function buildPdf(students, { includeReceipts }) {
         color: INK,
       });
 
-      // Text inside Card Header
       currentPage.drawText(pdfSafe(`REG: ${s.reg_number}`), {
         x: bounds.x + 10,
         y: bounds.yTop - 16,
@@ -628,53 +568,36 @@ async function buildPdf(students, { includeReceipts }) {
         font: bold,
         color: INK,
       });
-
-      currentPage.drawText(pdfSafe(fit(s.name, font, 9.5, bounds.width - 20)), {
+      currentPage.drawText(fit(s.name, font, 9.5, bounds.width - 20), {
         x: bounds.x + 10,
         y: bounds.yTop - 30,
         size: 9.5,
-        font: font,
+        font,
         color: INK,
       });
-
-      currentPage.drawText(pdfSafe(`${label}  •  ${fmtDate(s.created_at)}`), {
+      currentPage.drawText(pdfSafe(`${label}  |  ${fmtDate(s.created_at)}`), {
         x: bounds.x + 10,
         y: bounds.yTop - 42,
         size: 8,
-        font: font,
+        font,
         color: MUTED,
       });
 
-      // Photo Frame Box
       const pad = 6;
       const imgBoxX = bounds.x + pad;
       const imgBoxYTop = bounds.yTop - headerH - pad;
       const imgBoxW = bounds.width - pad * 2;
       const imgBoxH = bounds.height - headerH - pad * 2;
 
-      const filePath = path.join(UPLOAD_DIR, path.basename(r.file));
       try {
-        const bytes = fs.readFileSync(filePath);
-        if (r.kind === "pdf") {
-          const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
-          const embedded = await pdf.embedPdf(src, src.getPageIndices());
-          if (embedded.length > 0) {
-            const scale = Math.min(imgBoxW / embedded[0].width, imgBoxH / embedded[0].height);
-            const dw = embedded[0].width * scale;
-            const dh = embedded[0].height * scale;
-            const dx = imgBoxX + (imgBoxW - dw) / 2;
-            const dy = imgBoxYTop - imgBoxH + (imgBoxH - dh) / 2;
-            currentPage.drawPage(embedded[0], { x: dx, y: dy, width: dw, height: dh });
-          }
-        } else {
-          const img = await pdf.embedJpg(bytes);
-          const scale = Math.min(imgBoxW / img.width, imgBoxH / img.height);
-          const dw = img.width * scale;
-          const dh = img.height * scale;
-          const dx = imgBoxX + (imgBoxW - dw) / 2;
-          const dy = imgBoxYTop - imgBoxH + (imgBoxH - dh) / 2;
-          currentPage.drawImage(img, { x: dx, y: dy, width: dw, height: dh });
-        }
+        if (!bytes) throw new Error("missing photo");
+        const img = await pdf.embedJpg(bytes);
+        const scale = Math.min(imgBoxW / img.width, imgBoxH / img.height);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+        const dx = imgBoxX + (imgBoxW - dw) / 2;
+        const dy = imgBoxYTop - imgBoxH + (imgBoxH - dh) / 2;
+        currentPage.drawImage(img, { x: dx, y: dy, width: dw, height: dh });
       } catch (e) {
         currentPage.drawText("Could not load photo.", {
           x: imgBoxX + 10,
@@ -684,6 +607,21 @@ async function buildPdf(students, { includeReceipts }) {
           color: MUTED,
         });
       }
+    };
+
+    // Download photos a few at a time (fast, but memory stays small), then draw them in order.
+    const BATCH = 8;
+    for (let b = 0; b < items.length; b += BATCH) {
+      const batch = items.slice(b, b + BATCH);
+      const photos = await Promise.all(
+        batch.map((it) =>
+          store.downloadFile(it.receipt.file).catch((e) => {
+            console.error("photo download failed:", e.message);
+            return null;
+          })
+        )
+      );
+      for (let k = 0; k < batch.length; k++) await drawCard(batch[k], photos[k]);
     }
   }
 
@@ -699,18 +637,13 @@ async function buildPdf(students, { includeReceipts }) {
   return Buffer.from(await pdf.save());
 }
 
-function loadStudentsWithReceipts(idsParam) {
-  let rows = q.listStudents.all();
-  if (idsParam) {
-    const wanted = new Set(
-      String(idsParam)
-        .split(",")
-        .map(Number)
-        .filter((n) => Number.isInteger(n))
-    );
-    rows = rows.filter((s) => wanted.has(s.id));
-  }
-  return rows.map((s) => ({ ...s, receipts: q.receiptsForStudent.all(s.id) }));
+function parseIds(idsParam) {
+  if (!idsParam) return null;
+  const ids = String(idsParam)
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isInteger(n));
+  return ids.length ? ids : null;
 }
 
 function sendPdf(req, res, buffer, filename) {
@@ -723,12 +656,10 @@ function sendPdf(req, res, buffer, filename) {
   res.end(buffer);
 }
 
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
-
 // Full document: register table followed by every receipt (optionally only chosen students)
 app.get("/api/admin/export.pdf", requireAdmin, async (req, res) => {
   try {
-    const students = loadStudentsWithReceipts(req.query.ids);
+    const students = await store.listStudents(parseIds(req.query.ids));
     let filename = `receipts-${today()}.pdf`;
     if (students.length === 1) {
       const s = students[0];
@@ -738,31 +669,33 @@ app.get("/api/admin/export.pdf", requireAdmin, async (req, res) => {
     }
     sendPdf(req, res, await buildPdf(students, { includeReceipts: true }), filename);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not build the PDF." });
+    serverError(res, e, "Could not build the PDF.");
   }
 });
 
 // Register table only
 app.get("/api/admin/table.pdf", requireAdmin, async (req, res) => {
   try {
-    const students = loadStudentsWithReceipts(req.query.ids);
+    const students = await store.listStudents(parseIds(req.query.ids));
     sendPdf(req, res, await buildPdf(students, { includeReceipts: false }), `register-${today()}.pdf`);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not build the PDF." });
+    serverError(res, e, "Could not build the PDF.");
   }
 });
 
-app.get("/api/admin/export.csv", requireAdmin, (req, res) => {
-  const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-  const rows = [["S/N", "Full name", "Reg number", "Receipts", "Submitted"].map(esc).join(",")];
-  q.listStudents.all().forEach((s, i) =>
-    rows.push([i + 1, s.name, s.reg_number, s.receipt_count, fmtDateTime(s.created_at)].map(esc).join(","))
-  );
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="register-${today()}.csv"`);
-  res.end("\uFEFF" + rows.join("\r\n"));
+app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
+  try {
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [["S/N", "Full name", "Reg number", "Receipts", "Submitted"].map(esc).join(",")];
+    (await store.listStudents()).forEach((s, i) =>
+      rows.push([i + 1, s.name, s.reg_number, s.receipt_count, fmtDateTime(s.created_at)].map(esc).join(","))
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="register-${today()}.csv"`);
+    res.end("\uFEFF" + rows.join("\r\n"));
+  } catch (e) {
+    serverError(res, e, "Could not build the CSV.");
+  }
 });
 
 // ---------------------------------------------------------------------------

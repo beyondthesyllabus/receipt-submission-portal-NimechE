@@ -5,3 +5,6 @@ data/
 .DS_Store
 
 .vercel
+ .env
+   node_modules
+   data

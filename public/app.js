@@ -2,7 +2,9 @@
   "use strict";
 
   var MAX_FILES = 1;
-  var MAX_BYTES = 10 * 1024 * 1024;
+  var MAX_ORIGINAL_BYTES = 20 * 1024 * 1024; // photo picked from the phone
+  var MAX_UPLOAD_BYTES = 4 * 1024 * 1024;    // after shrinking (Vercel allows about 4.5 MB)
+  var MAX_SIDE = 1600;                        // longest side in pixels after shrinking
 
   var form = document.getElementById("form");
   var nameEl = document.getElementById("name");
@@ -28,12 +30,44 @@
     return b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
   }
 
+  // Shrinks the photo in the browser so it uploads fast and stays under the size limit.
+  function shrink(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+          var ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(function (blob) {
+            URL.revokeObjectURL(url);
+            resolve(blob || file);
+          }, "image/jpeg", 0.85);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          resolve(file);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    });
+  }
+
   function addFiles(list) {
     showError("");
     Array.prototype.forEach.call(list, function (f) {
       var okType = /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name);
       if (!okType) return showError('"' + f.name + '" is not a photo. Attach a clear JPG, PNG or WEBP image.');
-      if (f.size > MAX_BYTES) return showError('"' + f.name + '" is larger than 10 MB.');
+      if (f.size > MAX_ORIGINAL_BYTES) return showError('"' + f.name + '" is too large. Choose a photo under 20 MB.');
       if (MAX_FILES === 1) files = []; // choosing a new photo replaces the old one
       else if (files.length >= MAX_FILES) return showError("You can attach at most " + MAX_FILES + " photos.");
       files.push(f);
@@ -105,6 +139,11 @@
     if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
   });
 
+  function resetButton() {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit receipts";
+  }
+
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     showError("");
@@ -115,26 +154,29 @@
     if (name.length < 3) { nameEl.focus(); return showError("Enter your full name."); }
     if (!/^[A-Z0-9\/\-_.]{3,30}$/.test(reg)) { regEl.focus(); return showError("Enter a valid registration number."); }
 
-    try {
-      if (!reg.includes("ME")) {
-        throw new Error("Invalid registration number. Registration number must belong to Mechanical Engineering (must include 'ME', e.g. 22/EG/ME/001).");
-      }
-    } catch (valErr) {
+    if (reg.indexOf("ME") === -1) {
       regEl.focus();
-      return showError(valErr.message);
+      return showError("Invalid registration number. Registration number must belong to Mechanical Engineering (must include 'ME', e.g. 22/EG/ME/001).");
     }
 
     if (files.length === 0) return showError("Attach your receipt photo.");
 
-    var fd = new FormData();
-    fd.append("name", name);
-    fd.append("regNumber", reg);
-    files.forEach(function (f) { fd.append("receipts", f, f.name); });
-
     submitBtn.disabled = true;
-    submitBtn.textContent = "Uploading\u2026";
+    submitBtn.textContent = "Preparing photo\u2026";
 
-    fetch("/api/submit", { method: "POST", body: fd })
+    shrink(files[0])
+      .then(function (blob) {
+        if (blob.size > MAX_UPLOAD_BYTES) throw new Error("The photo is still too large. Please choose a smaller photo.");
+
+        var fd = new FormData();
+        fd.append("name", name);
+        fd.append("regNumber", reg);
+        var baseName = files[0].name.replace(/\.[^.]+$/, "") || "receipt";
+        fd.append("receipts", blob, baseName + ".jpg");
+
+        submitBtn.textContent = "Uploading\u2026";
+        return fetch("/api/submit", { method: "POST", body: fd });
+      })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (data) {
           return { ok: r.ok, data: data };
@@ -152,10 +194,7 @@
       .catch(function (err) {
         showError(err.message === "Failed to fetch" ? "No connection. Check your network and try again." : err.message);
       })
-      .then(function () {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Submit receipts";
-      });
+      .then(resetButton);
   });
 
   document.getElementById("again").addEventListener("click", function () {
