@@ -256,6 +256,28 @@
   btnTable.addEventListener("click", function () { download(exportUrl("/api/admin/table.pdf", true)); });
   document.getElementById("btnCsv").addEventListener("click", function () { download("/api/admin/export.csv"); });
 
+  // ---- Refresh button -----------------------------------------------------
+  var btnRefresh = document.getElementById("btnRefresh");
+  var updatedEl = document.getElementById("updated");
+
+  function stamp() {
+    updatedEl.textContent = "Last updated " + new Date().toLocaleTimeString("en-GB", {
+      timeZone: "Africa/Lagos", hour: "numeric", minute: "2-digit", hour12: true
+    });
+  }
+
+  btnRefresh.addEventListener("click", function () {
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = "Refreshing\u2026";
+    load().then(function () {
+      stamp();
+      btnRefresh.disabled = false;
+      btnRefresh.textContent = "Refresh";
+    });
+  });
+
+
+
   // ---- Boot ---------------------------------------------------------------
   fetch("/api/admin/me")
     .then(function (r) { return r.json(); })

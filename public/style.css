@@ -794,3 +794,12 @@ tr.detail td {
   color: #ffffff;
   border-color: #1e3a8a;
 }
+
+
+
+.updated {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  min-height: 1em;
+}
