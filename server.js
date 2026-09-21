@@ -432,10 +432,9 @@ async function buildPdf(students, { includeReceipts }) {
   // ---- Register table ------------------------------------------------------
   const cols = [
     { label: "S/N", w: 34, x: 0 },
-    { label: "Full name", w: 205, x: 0 },
-    { label: "Reg. number", w: 125, x: 0 },
-    { label: "Receipts", w: 55, x: 0 },
-    { label: "Submitted", w: 96, x: 0 },
+    { label: "Full name", w: 250, x: 0 },
+    { label: "Reg. number", w: 130, x: 0 },
+    { label: "Submitted", w: 101, x: 0 },
   ];
   let cx = MARGIN;
   cols.forEach((c) => {
@@ -484,7 +483,6 @@ async function buildPdf(students, { includeReceipts }) {
       String(sn),
       fit(s.name, font, 10, cols[1].w - 14),
       fit(s.reg_number, font, 10, cols[2].w - 14),
-      String(s.receipts.length),
       fmtDate(s.created_at),
     ];
     cells.forEach((t, k) => page.drawText(t, { x: cols[k].x + 8, y: y - 16, size: 10, font, color: INK }));
