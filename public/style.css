@@ -752,6 +752,31 @@ tr.detail td {
 }
 
 
+/* ---------- Fix: make Delete buttons show their text ---------- */
+button.danger,
+button.link.danger {
+  color: #ffffff !important;
+  background: var(--danger, #dc2626) !important;
+  border: 1px solid var(--danger, #dc2626) !important;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+button.danger:hover,
+button.link.danger:hover {
+  background: var(--danger-hover, #b91c1c) !important;
+  border-color: var(--danger-hover, #b91c1c) !important;
+}
+
+
+
+
+
+
+
+
 /* ---------- Footer ---------- */
 .site-footer {
   max-width: 620px;
