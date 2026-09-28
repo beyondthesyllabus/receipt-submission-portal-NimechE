@@ -15,11 +15,17 @@
   var btnFull = document.getElementById("btnFull");
   var btnPrint = document.getElementById("btnPrint");
   var btnTable = document.getElementById("btnTable");
+  var fromDate = document.getElementById("fromDate");
+  var toDate = document.getElementById("toDate");
+  var clearRangeBtn = document.getElementById("clearRange");
+  var rangeStatusEl = document.getElementById("rangeStatus");
 
   var students = [];
   var selected = new Set();
   var expanded = new Set();
   var activeYear = "all"; // "all" or a prefix such as "22"
+  var rangeFrom = null;   // ms epoch, inclusive lower bound (or null)
+  var rangeTo = null;     // ms epoch, inclusive upper bound (or null)
 
   var DEFAULT_HINT =
     "Download PDF and Print include the register table followed by every receipt. They use all students unless you tick rows.";
@@ -158,10 +164,26 @@
     return activeYear === "all" || yearOf(s.reg_number) === activeYear;
   }
 
+  function rangeActive() {
+    return rangeFrom != null || rangeTo != null;
+  }
+
+  // A submission is in range when its created_at falls between the picked start/end.
+  // Rows with an unreadable timestamp are kept so they never silently disappear.
+  function inRange(s) {
+    if (!rangeActive()) return true;
+    var t = Date.parse(s.created_at);
+    if (isNaN(t)) return true;
+    if (rangeFrom != null && t < rangeFrom) return false;
+    if (rangeTo != null && t > rangeTo) return false;
+    return true;
+  }
+
   function visible() {
     var term = searchEl.value.trim().toLowerCase();
     return students.filter(function (s) {
       if (!inGroup(s)) return false;
+      if (!inRange(s)) return false;
       if (!term) return true;
       return s.name.toLowerCase().indexOf(term) !== -1 || s.reg_number.toLowerCase().indexOf(term) !== -1;
     });
@@ -173,6 +195,16 @@
     var totalReceipts = students.reduce(function (n, s) { return n + s.receipt_count; }, 0);
     summaryEl.textContent = students.length + (students.length === 1 ? " student, " : " students, ") +
       totalReceipts + (totalReceipts === 1 ? " receipt" : " receipts");
+
+    if (rangeActive()) {
+      var inPeriod = students.filter(inRange).length;
+      rangeStatusEl.textContent =
+        "Showing " + list.length + " of " + students.length + " submissions — " +
+        inPeriod + " uploaded in the selected period" +
+        (searchEl.value.trim() || activeYear !== "all" ? " (before search/group filters)" : "") + ".";
+    } else {
+      rangeStatusEl.textContent = "";
+    }
 
     renderTabs();
 
@@ -277,16 +309,24 @@
     var list = visible();
     selectAll.checked = list.length > 0 && list.every(function (s) { return selected.has(s.id); });
     var n = selected.size;
+
+    // Plain-English description of the current non-selection scope (year tab and/or date range).
+    var scopeParts = [];
+    if (activeYear !== "all") scopeParts.push(yearLabel(activeYear));
+    if (rangeActive()) scopeParts.push("in the selected period");
+    var scope = scopeParts.join(" ");
+
     var suffix = "";
     if (n) suffix = " (" + n + " selected)";
-    else if (activeYear !== "all") suffix = " (" + yearLabel(activeYear) + " only)";
+    else if (scope) suffix = " (" + list.length + " " + scope + ")";
     btnFull.textContent = "Download PDF" + suffix;
     btnPrint.textContent = "Print" + suffix;
     btnTable.textContent = "Register only" + suffix;
-    if (n) hintEl.textContent = n + " selected. Clear the ticks to export the whole list.";
-    else if (activeYear !== "all")
-      hintEl.textContent = "Downloads and prints use only the " + yearLabel(activeYear) +
-        " students. Tick rows to choose specific students.";
+
+    if (n) hintEl.textContent = n + " selected. Clear the ticks to export the whole filtered list.";
+    else if (scope)
+      hintEl.textContent = "Downloads and prints use only the " + list.length + " submission(s) " + scope +
+        ". Tick rows to choose specific students.";
     else hintEl.textContent = DEFAULT_HINT;
   }
 
@@ -299,12 +339,68 @@
 
   searchEl.addEventListener("input", render);
 
+  // ---- Date / time range tracker -----------------------------------------
+  // Format a Date as the value an <input type="datetime-local"> expects (local time).
+  function toLocalInput(d) {
+    var pad = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+      "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  function applyRange() {
+    rangeFrom = fromDate.value ? new Date(fromDate.value).getTime() : null;
+    rangeTo = toDate.value ? new Date(toDate.value).getTime() : null;
+    if (rangeFrom != null && isNaN(rangeFrom)) rangeFrom = null;
+    if (rangeTo != null && isNaN(rangeTo)) rangeTo = null;
+    // Guard against an inverted range so the table never shows nothing by mistake.
+    if (rangeFrom != null && rangeTo != null && rangeFrom > rangeTo) {
+      var tmp = rangeFrom; rangeFrom = rangeTo; rangeTo = tmp;
+      fromDate.value = toLocalInput(new Date(rangeFrom));
+      toDate.value = toLocalInput(new Date(rangeTo));
+    }
+    render();
+  }
+
+  function setPreset(kind) {
+    if (kind === "all") {
+      fromDate.value = ""; toDate.value = "";
+      rangeFrom = null; rangeTo = null;
+      render();
+      return;
+    }
+    var now = new Date();
+    var from, to;
+    if (kind === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    } else {
+      var days = parseInt(kind, 10);
+      to = now;
+      from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    }
+    fromDate.value = toLocalInput(from);
+    toDate.value = toLocalInput(to);
+    applyRange();
+  }
+
+  fromDate.addEventListener("change", applyRange);
+  toDate.addEventListener("change", applyRange);
+  clearRangeBtn.addEventListener("click", function () { setPreset("all"); });
+  Array.prototype.forEach.call(
+    document.querySelectorAll(".range-presets .chip[data-preset]"),
+    function (chip) {
+      chip.addEventListener("click", function () { setPreset(chip.getAttribute("data-preset")); });
+    }
+  );
+
   // ---- Exports ------------------------------------------------------------
   // Ticked rows win; otherwise the open group (22/..., 23/...); otherwise everyone.
   function exportIds() {
     if (selected.size) return Array.from(selected);
-    if (activeYear !== "all") {
-      return students.filter(inGroup).map(function (s) { return s.id; });
+    if (activeYear !== "all" || rangeActive()) {
+      return students
+        .filter(function (s) { return inGroup(s) && inRange(s); })
+        .map(function (s) { return s.id; });
     }
     return null;
   }

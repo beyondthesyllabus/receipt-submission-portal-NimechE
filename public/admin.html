@@ -68,6 +68,37 @@
         <button class="danger small" id="btnDeleteSelected" type="button" hidden>Delete Selected</button>
       </div>
     </div>
+
+    <div class="rangebar" id="rangebar">
+      <div class="range-head">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <polyline points="12 7 12 12 15 14"></polyline>
+        </svg>
+        <span>Track uploads by date &amp; time</span>
+      </div>
+      <div class="range-fields">
+        <div class="range-field">
+          <label for="fromDate">Start</label>
+          <input id="fromDate" type="datetime-local">
+        </div>
+        <span class="range-sep" aria-hidden="true">&rarr;</span>
+        <div class="range-field">
+          <label for="toDate">End</label>
+          <input id="toDate" type="datetime-local">
+        </div>
+      </div>
+      <div class="range-presets">
+        <button class="chip" type="button" data-preset="today">Today</button>
+        <button class="chip" type="button" data-preset="7">Last 7 days</button>
+        <button class="chip" type="button" data-preset="30">Last 30 days</button>
+        <button class="chip" type="button" data-preset="all">All time</button>
+        <button class="chip clear" type="button" id="clearRange">Clear</button>
+      </div>
+      <p class="range-status" id="rangeStatus" aria-live="polite"></p>
+    </div>
+
     <p class="updated" id="updated" aria-live="polite"></p>
     <p class="hint" id="hint">Download PDF and Print generate formatted A4 documents. Tick rows to filter export by
       selected students.</p>
@@ -81,7 +112,7 @@
             <th class="sn">S/N</th>
             <th>Full Name</th>
             <th>Reg. Number</th>
-
+            <th class="num">Receipts</th>
             <th>Submission Date</th>
             <th class="rowactions"><span class="sr">Actions</span></th>
           </tr>
